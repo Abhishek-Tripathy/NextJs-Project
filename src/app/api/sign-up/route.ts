@@ -1,7 +1,7 @@
 import dbConnect from "@/lib/dbConnect";
 import UserModel from "@/models/User";
 import bcrypt from "bcryptjs"
-import { sendVeificationEmail } from "@/helpers/sendVerificationEmails";
+import { sendVerificationEmail } from "@/helpers/sendVerificationEmails";
 
 
 export async function POST(request: Request) {
@@ -21,7 +21,15 @@ export async function POST(request: Request) {
       const existingUserByEmail = await UserModel.findOne({email})
 
       if(existingUserByEmail) {
-         true
+         if(existingUserByEmail.isVerified){
+            return Response.json({success: false, message: "User already exixsts with this email"}, {status: 500})
+         }else{
+            const hashedPassword = await bcrypt.hash(password, 10)
+            existingUserByEmail.password = hashedPassword
+            existingUserByEmail.verifyCode = verifyCode
+            existingUserByEmail.verifyCodeExpiry = new Date(Date.now() + 3600000)
+            await existingUserByEmail.save()
+         }
       }else{
          const hashedPassword = await bcrypt.hash(password, 10)
          const expiryDate = new Date()
@@ -41,7 +49,11 @@ export async function POST(request: Request) {
          await newUser.save()
       }
    //Send Verification Email
-   
+   const emailResponse = await sendVerificationEmail(email, username, verifyCode)
+
+   if(!emailResponse.success) return Response.json({success: false, message: emailResponse.message}, {status: 500})
+
+      return Response.json({success: true, message: "userRegistered Successfully, Please verify your email"}, {status: 200})
 
    } catch (error) {
       console.error("Error registering User", error)
